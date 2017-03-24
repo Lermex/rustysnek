@@ -159,21 +159,36 @@ fn send_greetings() -> Result<(), Box<Error>> {
     let socket = try!(UdpSocket::bind("0.0.0.0:34254"));
     socket.set_broadcast(true);
     let message = Message {id: my_uuid, message: message_text};
-    let serialized = serde_json::to_string(&message).unwrap();
+    let mut serialized = serde_json::to_string(&message).unwrap();
+    serialized.push('\n');
     println!("Serialized: {}", serialized);
     println!("bound");
     try!(socket.send_to(&serialized.into_bytes()[..], ("255.255.255.255", 34254)));
     println!("sent");
-    // read from the socket
-    let mut buf = [0; 30];
-    let (amt, src) = try!(socket.recv_from(&mut buf));
-    println!("Got this data: {:?}. Will send it back", String::from_utf8(buf.to_vec()).unwrap());
+    // read from the socket until newline
+    let mut data: String = String::new();
+    'recvloop: loop {
+        let mut buf = [0; 0x1000];
+        try!(socket.recv_from(&mut buf));
+        // todo: horribly inefficient, probably
+        for &x in buf.iter() {
+            if x == '\n' as u8 {
+                break 'recvloop;
+            } else {
+                data.push(x as char);
+            }
+        }
+    }
+    println!("Got this data: {}", data);
+
+/*
 
     // send a reply to the socket we received data from
     let buf = &mut buf[..amt];
     buf.reverse();
     try!(socket.send_to(buf, &src));
 
+*/
 
     return Ok(())
 }
