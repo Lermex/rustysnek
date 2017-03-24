@@ -10,9 +10,16 @@ use piston_window::*;
 use piston_window::Event::*;
 use piston_window::Input::*;
 use piston_window::Button::*;
+use uuid::Uuid;
 
 extern crate piston_window;
 extern crate rand;
+extern crate uuid;
+
+#[macro_use]
+extern crate serde_derive;
+
+extern crate serde_json;
 
 const CELL_LENGTH: f64 = 21.0;
 
@@ -143,14 +150,19 @@ fn should_eat(head: &Point, thing: &Point) -> bool {
 }
 
 fn send_greetings() -> Result<(), Box<Error>> {
+    let my_uuid = Uuid::new_v4();
+
     let mut rng = rand::thread_rng();
     let id: i64 = rng.gen();
     println!("My id is: {}. Sending it to everybody", id);
-    let message = format!("ID: {}", id).into_bytes();
+    let message_text = format!("ID: {}", id);
     let socket = try!(UdpSocket::bind("0.0.0.0:34254"));
     socket.set_broadcast(true);
+    let message = Message {id: my_uuid, message: message_text};
+    let serialized = serde_json::to_string(&message).unwrap();
+    println!("Serialized: {}", serialized);
     println!("bound");
-    try!(socket.send_to(message.as_slice(), ("255.255.255.255", 34254)));
+    try!(socket.send_to(&serialized.into_bytes()[..], ("255.255.255.255", 34254)));
     println!("sent");
     // read from the socket
     let mut buf = [0; 30];
@@ -162,9 +174,16 @@ fn send_greetings() -> Result<(), Box<Error>> {
     buf.reverse();
     try!(socket.send_to(buf, &src));
 
+
     return Ok(())
 }
 
 enum Direction {
     Up, Down, Left, Right
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Message {
+    id: Uuid,
+    message: String
 }
