@@ -18,8 +18,8 @@ const SCREEN_HEIGHT: u32 = 600;
 type Point = (f64, f64);
 
 fn main() {
-    let orange = [1.0, 0.6, 0.0, 1.0];
-    let red = [1.0, 0.0, 0.0, 1.0];
+    let orange = |x: f32| [1.0, 0.6, 0.0, x];
+    let red = |x: f32| [1.0, 0.0, 0.0, x];
 
     let mut snek_body: LinkedList<Point> = LinkedList::new();
 
@@ -55,9 +55,10 @@ fn main() {
         window.draw_2d(&e, |c, g| {
             piston_window::clear([0.0; 4], g);
 
-            for segment in &snek_body {
-                piston_window::rectangle(orange, [segment.0, segment.1, 20.0, 20.0], c.transform, g);
-                piston_window::ellipse(red, [apple.0 + 5.0, apple.1 + 5.0, 10.0, 10.0], c.transform, g);
+            let len = (&snek_body).len() as f32;
+            for (i, segment) in (&snek_body).iter().enumerate() {
+                piston_window::rectangle(orange(1.0 - (i as f32) / len * 0.9), [segment.0, segment.1, 20.0, 20.0], c.transform, g);
+                piston_window::ellipse(red(1.0), [apple.0 + 5.0, apple.1 + 5.0, 10.0, 10.0], c.transform, g);
             }
         });
     }
