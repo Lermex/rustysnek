@@ -1,4 +1,5 @@
 use std::collections::LinkedList;
+use piston_window::*;
 
 extern crate piston_window;
 
@@ -17,9 +18,16 @@ fn main() {
     let mut window: piston_window::PistonWindow = piston_window::WindowSettings::new("Snek", [800, 600])
         .exit_on_esc(true).build().unwrap();
 
-    while let Some(e) = window.next() {
-        update(&mut snek_body);
+    let mut mov = 0.0;
 
+    while let Some(e) = window.next() {
+        if let Some(r) = e.update_args() {
+            mov += r.dt;
+        }
+        if mov >= 1.0 {
+            mov = mov-1.0;
+            update(&mut snek_body);
+        }
         window.draw_2d(&e, |c, g| {
             piston_window::clear([0.0; 4], g);
 
