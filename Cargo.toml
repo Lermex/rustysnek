@@ -5,3 +5,4 @@ authors = ["Sviatoslav Chumakov <Sviatoslav_Chumakov@epam.com>"]
 
 [dependencies]
 piston_window = "0.60.0"
+rand = "0.3"
