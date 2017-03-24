@@ -22,6 +22,12 @@ const SCREEN_HEIGHT: u32 = 600;
 type Point = (f64, f64);
 
 fn main() {
+    match send_greetings() {
+        Ok(()) => println!("send_greetings succeeded"),
+        Err(x) => println!("send_greetings failed: {}", x),
+    }
+    return ();
+
     let orange = |x: f32| [1.0, 0.6, 0.0, x];
     let blue   = |x: f32| [0.2, 0.2, 0.8, x];
     let red    = |x: f32| [1.0, 0.0, 0.0, x];
@@ -85,7 +91,6 @@ fn main() {
                 g);
         });
     }
-    sendGreetings();
 }
 
 fn update(direction: &Direction, snek_body: &mut LinkedList<Point>, apple: &mut Point, walls: &mut LinkedList<Point>) {
@@ -137,19 +142,20 @@ fn should_eat(head: &Point, thing: &Point) -> bool {
         && head.1 <= thing.1 && thing.1 < head.1 + CELL_LENGTH
 }
 
-fn sendGreetings() -> Result<(), Box<Error>> {
+fn send_greetings() -> Result<(), Box<Error>> {
     let mut rng = rand::thread_rng();
     let id: i64 = rng.gen();
     println!("My id is: {}. Sending it to everybody", id);
     let message = format!("ID: {}", id).into_bytes();
-    let mut socket = try!(UdpSocket::bind("0.0.0.0:34254"));
-
-    socket.send_to(message.as_slice(), ("255.255.255.255", 34254));
-
+    let socket = try!(UdpSocket::bind("0.0.0.0:34254"));
+    socket.set_broadcast(true);
+    println!("bound");
+    try!(socket.send_to(message.as_slice(), ("255.255.255.255", 34254)));
+    println!("sent");
     // read from the socket
-    let mut buf = [0; 10];
+    let mut buf = [0; 30];
     let (amt, src) = try!(socket.recv_from(&mut buf));
-    println!("Got this data: {:?}. Will send it back", buf);
+    println!("Got this data: {:?}. Will send it back", String::from_utf8(buf.to_vec()).unwrap());
 
     // send a reply to the socket we received data from
     let buf = &mut buf[..amt];
