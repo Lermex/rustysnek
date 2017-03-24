@@ -34,8 +34,10 @@ fn main() {
 
 fn update(snek_body: &mut LinkedList<(f64, f64)>) {
     snek_body.pop_back();
-    let head = &snek_body.front().unwrap();
-    let new_head = (head.0 + 21.0, head.1);
+    let new_head = {
+        let head = snek_body.front().unwrap();
+        (head.0 + 21.0, head.1)
+    };
     snek_body.push_front(new_head);
 }
 
