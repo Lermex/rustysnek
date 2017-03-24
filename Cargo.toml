@@ -1,0 +1,7 @@
+[package]
+name = "rustysnek"
+version = "0.1.0"
+authors = ["Sviatoslav Chumakov <Sviatoslav_Chumakov@epam.com>"]
+
+[dependencies]
+piston_window = "0.60.0"
