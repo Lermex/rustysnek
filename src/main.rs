@@ -1,5 +1,8 @@
 use std::collections::LinkedList;
 use piston_window::*;
+use piston_window::Event::*;
+use piston_window::Input::*;
+use piston_window::Button::*;
 
 extern crate piston_window;
 
@@ -13,7 +16,7 @@ fn main() {
     snek_body.push_front((10.0, 52.0));
 
     let mut x = 0.0;
-    let direction = Direction::Right;
+    let mut direction = Direction::Right;
 
     let mut window: piston_window::PistonWindow = piston_window::WindowSettings::new("Snek", [800, 600])
         .exit_on_esc(true).build().unwrap();
@@ -21,12 +24,19 @@ fn main() {
     let mut mov = 0.0;
 
     while let Some(e) = window.next() {
+        direction = match e {
+            Input(Press(Keyboard(Key::Left)))  => Direction::Left,
+            Input(Press(Keyboard(Key::Right))) => Direction::Right,
+            Input(Press(Keyboard(Key::Up)))    => Direction::Up,
+            Input(Press(Keyboard(Key::Down)))  => Direction::Down,
+            _ => direction,
+        };
         if let Some(r) = e.update_args() {
             mov += r.dt;
         }
         if mov >= 1.0 {
             mov = mov-1.0;
-            update(&mut snek_body);
+            update(&direction, &mut snek_body);
         }
         window.draw_2d(&e, |c, g| {
             piston_window::clear([0.0; 4], g);
@@ -40,13 +50,23 @@ fn main() {
     }
 }
 
-fn update(snek_body: &mut LinkedList<(f64, f64)>) {
+fn update(direction: &Direction, snek_body: &mut LinkedList<(f64, f64)>) {
     snek_body.pop_back();
     let new_head = {
         let head = snek_body.front().unwrap();
-        (head.0 + 21.0, head.1)
+        let delta = shift(direction);
+        (head.0 + delta.0, head.1 + delta.1)
     };
     snek_body.push_front(new_head);
+}
+
+fn shift(direction: &Direction) -> (f64, f64) {
+    match *direction {
+        Direction::Up => (0.0, -21.0),
+        Direction::Down => (0.0, 21.0),
+        Direction::Left => (-21.0, 0.0),
+        Direction::Right => (21.0, 0.0),
+    }
 }
 
 enum Direction {
