@@ -34,8 +34,8 @@ fn main() {
         if let Some(r) = e.update_args() {
             mov += r.dt;
         }
-        if mov >= 1.0 {
-            mov = mov-1.0;
+        if mov >= 1.0/15.0 {
+            mov = mov - 1.0/15.0;
             update(&direction, &mut snek_body);
         }
         window.draw_2d(&e, |c, g| {
