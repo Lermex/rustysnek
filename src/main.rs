@@ -59,7 +59,11 @@ fn main() {
     while let Some(e) = window.next() {
 
         match send_greetings(&my_uuid, &snek_body.front().unwrap()) {
-            Ok(p) => other_head = p,
+            Ok(p) => {
+                if p.0 != 0.0 {
+                    other_head = p
+                }
+            },
             Err(x) => println!("send_greetings failed: {}", x),
         }
 
@@ -174,17 +178,16 @@ fn send_greetings(my_uuid: &Uuid, own_head: &Point) -> Result<Point, Box<Error>>
     try!(socket.send_to(&serialized.into_bytes()[..], ("255.255.255.255", 34254)));
     println!("sent");
 
-    loop {
-        let data = read_buf(&socket)?;
-        let deserialized: Message = serde_json::from_str(&data).unwrap();
+    let data = read_buf(&socket)?;
+    let deserialized: Message = serde_json::from_str(&data).unwrap();
 
-        if deserialized.id != *my_uuid {
-            println!("Got this point: {:?} from ID: {}", deserialized.point, deserialized.id);
-            return Ok(deserialized.point);
-        }
+    if deserialized.id != *my_uuid {
+        println!("Got this point: {:?} from ID: {}", deserialized.point, deserialized.id);
+        return Ok(deserialized.point);
     }
 
 
+    return Ok((0.0, 0.0));
 /*
 
     // send a reply to the socket we received data from
