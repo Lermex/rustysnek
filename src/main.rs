@@ -1,10 +1,10 @@
 use std::collections::LinkedList;
 use rand::distributions::{IndependentSample, Range};
 use rand::Rng;
-
+use std::time::Duration;
 use std::error::Error;
-
 use std::net::UdpSocket;
+use std::fmt;
 
 use piston_window::*;
 use piston_window::Event::*;
@@ -36,7 +36,8 @@ fn main() {
 
     let mut snek_body = LinkedList::<Point>::new();
     let mut walls = LinkedList::<Point>::new();
-    let mut other_head = (0.0, 0.0);
+    let mut other_body = LinkedList::<Point>::new();
+    other_body.push_front((0.0, 0.0));
 
     snek_body.push_front((10.0, 10.0));
     snek_body.push_front((10.0, 31.0));
@@ -58,13 +59,8 @@ fn main() {
 
     while let Some(e) = window.next() {
 
-        match send_greetings(&my_uuid, &snek_body.front().unwrap()) {
-            Ok(p) => {
-                if p.0 != 0.0 {
-                    other_head = p
-                }
-            },
-            Err(x) => println!("send_greetings failed: {}", x),
+        if let Ok(other_points) = send_greetings(&my_uuid, &snek_body) {
+            other_body = other_points
         }
 
         direction = match e {
@@ -105,11 +101,14 @@ fn main() {
                 c.transform,
                 g);
 
-            piston_window::rectangle(
-                green(1.0),
-                [other_head.0, other_head.1, 20.0, 20.0],
-                c.transform,
-                g);
+            let len_other = (&other_body).len() as f32;
+            for (i, segment) in (&other_body).iter().enumerate() {
+                piston_window::rectangle(
+                    green(1.0 - (i as f32) / len * 0.9),
+                    [segment.0, segment.1, 20.0, 20.0],
+                    c.transform,
+                    g);
+            }
         });
     }
 }
@@ -163,31 +162,37 @@ fn should_eat(head: &Point, thing: &Point) -> bool {
         && head.1 <= thing.1 && thing.1 < head.1 + CELL_LENGTH
 }
 
-fn send_greetings(my_uuid: &Uuid, own_head: &Point) -> Result<Point, Box<Error>> {
-    let mut rng = rand::thread_rng();
-    let id: i64 = rng.gen();
-    println!("My id is: {}. Sending it to everybody", id);
-    let message_text = format!("ID: {}", id);
-    let socket = try!(UdpSocket::bind("0.0.0.0:34254"));
+fn send_greetings(my_uuid: &Uuid, own_body: &LinkedList<Point>) -> Result<LinkedList<Point>, Box<Error>> {
+    let socket = {
+        if let Ok(sok) = UdpSocket::bind("0.0.0.0:34254") {
+            sok
+        } else {
+            try!(UdpSocket::bind("0.0.0.0:34255"))
+        }
+    };
+    socket.set_read_timeout(Some(Duration::new(0, 1000)));
     socket.set_broadcast(true);
-    println!("bound");
-    let message = Message {id: my_uuid.clone(), point: own_head.clone()};
+//    println!("bound");
+    let message = Message {id: my_uuid.clone(), body: own_body.clone()};
     let mut serialized = serde_json::to_string(&message).unwrap();
-    println!("Serialized: {}", serialized);
+    print!("Serialized: {} | ", serialized);
     serialized.push('\n');
-    try!(socket.send_to(&serialized.into_bytes()[..], ("255.255.255.255", 34254)));
+    let bytes = &serialized.into_bytes()[..];
+    try!(socket.send_to(bytes, ("255.255.255.255", 34254)));
+    try!(socket.send_to(bytes, ("255.255.255.255", 34255)));
     println!("sent");
 
-    let data = read_buf(&socket)?;
-    let deserialized: Message = serde_json::from_str(&data).unwrap();
+    for x in 0..3 {
+        let data = read_buf(&socket)?;
+        let deserialized: Message = serde_json::from_str(&data).unwrap();
 
-    if deserialized.id != *my_uuid {
-        println!("Got this point: {:?} from ID: {}", deserialized.point, deserialized.id);
-        return Ok(deserialized.point);
+        if deserialized.id != *my_uuid {
+            println!("Got this point: {:?} from ID: {}", deserialized.body, deserialized.id);
+            return Ok(deserialized.body);
+        }
     }
 
-
-    return Ok((0.0, 0.0));
+    return Err(Box::new(SnekError{}));
 /*
 
     // send a reply to the socket we received data from
@@ -197,6 +202,22 @@ fn send_greetings(my_uuid: &Uuid, own_head: &Point) -> Result<Point, Box<Error>>
 
 */
 
+}
+
+#[derive(Debug)]
+struct SnekError {
+}
+
+impl fmt::Display for SnekError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "SnekError is here!")
+    }
+}
+
+impl Error for SnekError {
+    fn description(&self) -> &str {
+        "Snek error"
+    }
 }
 
 /// read from the socket until newline
@@ -223,5 +244,5 @@ enum Direction {
 #[derive(Serialize, Deserialize, Debug)]
 struct Message {
     id: Uuid,
-    point: Point
+    body: LinkedList<Point>
 }
