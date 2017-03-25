@@ -29,18 +29,14 @@ const SCREEN_HEIGHT: u32 = 600;
 type Point = (f64, f64);
 
 fn main() {
-    match send_greetings() {
-        Ok(()) => println!("send_greetings succeeded"),
-        Err(x) => println!("send_greetings failed: {}", x),
-    }
-    return ();
-
     let orange = |x: f32| [1.0, 0.6, 0.0, x];
     let blue   = |x: f32| [0.2, 0.2, 0.8, x];
     let red    = |x: f32| [1.0, 0.0, 0.0, x];
+    let green  = |x: f32| [0.0, 1.0, 0.0, x];
 
     let mut snek_body = LinkedList::<Point>::new();
     let mut walls = LinkedList::<Point>::new();
+    let mut other_head = (0.0, 0.0);
 
     snek_body.push_front((10.0, 10.0));
     snek_body.push_front((10.0, 31.0));
@@ -52,6 +48,8 @@ fn main() {
 
     let mut direction = Direction::Right;
 
+    let my_uuid = Uuid::new_v4();
+
     let mut window: piston_window::PistonWindow =
         piston_window::WindowSettings::new("Snek", [SCREEN_WIDTH, SCREEN_HEIGHT])
         .exit_on_esc(true).build().unwrap();
@@ -59,6 +57,12 @@ fn main() {
     let mut mov = 0.0;
 
     while let Some(e) = window.next() {
+
+        match send_greetings(&my_uuid, &snek_body.front().unwrap()) {
+            Ok(p) => other_head = p,
+            Err(x) => println!("send_greetings failed: {}", x),
+        }
+
         direction = match e {
             Input(Press(Keyboard(Key::Left)))  => Direction::Left,
             Input(Press(Keyboard(Key::Right))) => Direction::Right,
@@ -94,6 +98,12 @@ fn main() {
             piston_window::ellipse(
                 red(1.0),
                 [apple.0 + 5.0, apple.1 + 5.0, 10.0, 10.0],
+                c.transform,
+                g);
+
+            piston_window::rectangle(
+                green(1.0),
+                [other_head.0, other_head.1, 20.0, 20.0],
                 c.transform,
                 g);
         });
@@ -149,37 +159,31 @@ fn should_eat(head: &Point, thing: &Point) -> bool {
         && head.1 <= thing.1 && thing.1 < head.1 + CELL_LENGTH
 }
 
-fn send_greetings() -> Result<(), Box<Error>> {
-    let my_uuid = Uuid::new_v4();
-
+fn send_greetings(my_uuid: &Uuid, own_head: &Point) -> Result<Point, Box<Error>> {
     let mut rng = rand::thread_rng();
     let id: i64 = rng.gen();
     println!("My id is: {}. Sending it to everybody", id);
     let message_text = format!("ID: {}", id);
     let socket = try!(UdpSocket::bind("0.0.0.0:34254"));
     socket.set_broadcast(true);
-    let message = Message {id: my_uuid, message: message_text};
-    let mut serialized = serde_json::to_string(&message).unwrap();
-    serialized.push('\n');
-    println!("Serialized: {}", serialized);
     println!("bound");
+    let message = Message {id: my_uuid.clone(), point: own_head.clone()};
+    let mut serialized = serde_json::to_string(&message).unwrap();
+    println!("Serialized: {}", serialized);
+    serialized.push('\n');
     try!(socket.send_to(&serialized.into_bytes()[..], ("255.255.255.255", 34254)));
     println!("sent");
-    // read from the socket until newline
-    let mut data: String = String::new();
-    'recvloop: loop {
-        let mut buf = [0; 0x1000];
-        try!(socket.recv_from(&mut buf));
-        // todo: horribly inefficient, probably
-        for &x in buf.iter() {
-            if x == '\n' as u8 {
-                break 'recvloop;
-            } else {
-                data.push(x as char);
-            }
+
+    loop {
+        let data = read_buf(&socket)?;
+        let deserialized: Message = serde_json::from_str(&data).unwrap();
+
+        if deserialized.id != *my_uuid {
+            println!("Got this point: {:?} from ID: {}", deserialized.point, deserialized.id);
+            return Ok(deserialized.point);
         }
     }
-    println!("Got this data: {}", data);
+
 
 /*
 
@@ -190,7 +194,23 @@ fn send_greetings() -> Result<(), Box<Error>> {
 
 */
 
-    return Ok(())
+}
+
+/// read from the socket until newline
+fn read_buf(socket: &UdpSocket) -> Result<String, Box<Error>> {
+    let mut data = String::new();
+    loop {
+        let mut buf = [0; 0x1000];
+        try!(socket.recv_from(&mut buf));
+        // todo: horribly inefficient, probably
+        for &x in buf.iter() {
+            if x == '\n' as u8 {
+                return Ok(data);
+            } else {
+                data.push(x as char);
+            }
+        }
+    }
 }
 
 enum Direction {
@@ -200,5 +220,5 @@ enum Direction {
 #[derive(Serialize, Deserialize, Debug)]
 struct Message {
     id: Uuid,
-    message: String
+    point: Point
 }
