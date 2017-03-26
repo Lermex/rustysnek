@@ -41,6 +41,13 @@ struct State {
     direction: Direction
 }
 
+/// A modification that can be applied to the global state depending on what
+/// happens in the event handling loop
+enum Mod {
+    SetDirection { dir: Direction },
+    AdvanceSnek,
+}
+
 fn main() {
     let orange = |x: f32| [1.0, 0.6, 0.0, x];
     let blue   = |x: f32| [0.2, 0.2, 0.8, x];
@@ -71,48 +78,76 @@ fn main() {
     let mut mov = 0.0;
 
     let lock = Arc::new(RwLock::new(init_state));
+
+    // sending loop
     {
         let lock = lock.clone();
         thread::spawn(move || {
             loop {
-                let state = lock.read().unwrap();
-                println!("got read lock in send loop");
-                send(&my_uuid, &state);
-                sleep(Duration::from_millis(30));
+                {
+                    let state = lock.read().unwrap();
+                    debug("sending");
+                    send(&my_uuid, &state);
+                    debug("sent")
+                }
+                sleep(Duration::from_millis(2));
             }
         });
     }
+
+    // receiving loop
     {
         let lock = lock.clone();
         thread::spawn(move || {
             loop {
-                let mut state = lock.write().unwrap();
-                println!("got write lock in receive loop");
-                recv(&my_uuid, &mut state);
-                sleep(Duration::from_millis(500));
+                {
+                    let mut state = lock.write().unwrap();
+                    debug("receiving");
+                    recv(&my_uuid, &mut state);
+                    debug("received");
+                }
+                sleep(Duration::from_millis(2));
             }
         });
     }
+
     while let Some(e) = window.next() {
-        let mut state = lock.write().unwrap();
-        println!("got write lock in render loop");
+        if let Some(r) = e.update_args() {
+            mov += r.dt;
+        }
+        // we don't want to ask for a write lock if we're not going to update
+        // anything, so we gather modifications into a list and then look at
+        // whether it's empty or not
+        let mut mods = LinkedList::<Mod>::new();
         match e {
             Input(Press(Keyboard(key))) => match key {
-                Key::Left  => state.direction = Direction::Left,
-                Key::Right => state.direction = Direction::Right,
-                Key::Up    => state.direction = Direction::Up,
-                Key::Down  => state.direction = Direction::Down,
+                Key::Left => mods.push_back(
+                    Mod::SetDirection{ dir: Direction::Left }),
+                Key::Right => mods.push_back(
+                    Mod::SetDirection{ dir: Direction::Right }),
+                Key::Up => mods.push_back(
+                    Mod::SetDirection{ dir: Direction::Up }),
+                Key::Down => mods.push_back(
+                    Mod::SetDirection{ dir: Direction::Down }),
                 _ => (),
             },
             _ => (),
         };
-        if let Some(r) = e.update_args() {
-            mov += r.dt;
-        }
-        if mov >= 1.0/15.0 {
-            mov = mov - 1.0/15.0;
-            update(&mut state);
-        }
+        if mov >= 1.0/10.0 {
+            mov = mov - 1.0/10.0;
+            mods.push_back(Mod::AdvanceSnek);
+        };
+        if !mods.is_empty() {
+            let mut state_ = lock.write().unwrap();
+            for m in mods {
+                match m {
+                    Mod::SetDirection{ dir } => state_.direction = dir,
+                    Mod::AdvanceSnek => update(&mut state_),
+                }
+            }
+        };
+        let state = lock.read().unwrap();
+
         window.draw_2d(&e, |c, g| {
             piston_window::clear([0.0; 4], g);
 
@@ -140,13 +175,12 @@ fn main() {
             let len_other = (&state.other_body).len() as f32;
             for (i, segment) in (&state.other_body).iter().enumerate() {
                 piston_window::rectangle(
-                    green(1.0 - (i as f32) / len * 0.9),
+                    green(1.0 - (i as f32) / len_other * 0.9),
                     [segment.0, segment.1, 20.0, 20.0],
                     c.transform,
                     g);
             }
         });
-        println!("render done");
     }
 }
 
@@ -211,12 +245,12 @@ fn send(my_uuid: &Uuid, state: &State) -> Result<(), Box<Error>> {
     // todo: get rid of clone
     let message = Message {id: my_uuid.clone(), body: state.snek_body.clone()};
     let mut serialized = serde_json::to_string(&message).unwrap();
-    print!("Serialized: {} | ", serialized);
+    // print!("Serialized: {} | ", serialized);
     serialized.push('\n');
     let bytes = &serialized.into_bytes()[..];
     try!(socket.send_to(bytes, ("255.255.255.255", 34254)));
     try!(socket.send_to(bytes, ("255.255.255.255", 34255)));
-    println!("sent");
+    // println!("sent");
     return Ok(());
 }
 
@@ -231,10 +265,9 @@ fn recv(my_uuid: &Uuid, state: &mut State) -> Result<(), Box<Error>> {
     socket.set_read_timeout(Some(Duration::from_millis(1)));
     let data = read_buf(&socket)?;
     let deserialized: Message = serde_json::from_str(&data).unwrap();
-
     if deserialized.id != *my_uuid {
-        println!("Got this point: {:?} from ID: {}",
-                 deserialized.body, deserialized.id);
+        // println!("Got this point: {:?} from ID: {}",
+        //          deserialized.body, deserialized.id);
         state.other_body = deserialized.body;
     }
     return Ok(());
@@ -288,4 +321,8 @@ enum Direction {
 struct Message {
     id: Uuid,
     body: LinkedList<Point>
+}
+
+fn debug(x: &str) {
+    println!("{}: {}", now().tm_nsec as f64 / 1000000.0, x);
 }
